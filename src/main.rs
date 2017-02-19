@@ -54,11 +54,21 @@ fn main() {
 				Event::KeyDown {keycode: Some(Keycode::Left), ..} => {
 					if clock_speed > 100 {
 						clock_speed -= 100;
+					} else if clock_speed > 10 {
+						clock_speed -= 10;
+					} else if clock_speed > 1 {
+						clock_speed -= 1;
 					}
 					println!("Clock speed: {}hz", clock_speed);
 				}
 				Event::KeyDown {keycode: Some(Keycode::Right), ..} => {
-					clock_speed += 100;
+					if clock_speed >= 100 {
+						clock_speed += 100;
+					} else if clock_speed >= 10 {
+						clock_speed += 10;
+					} else {
+						clock_speed += 1;
+					}
 					println!("Clock speed: {}hz", clock_speed);
 				}
 				Event::KeyDown {keycode: Some(Keycode::Delete), ..} => {

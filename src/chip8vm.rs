@@ -297,7 +297,6 @@ impl Chip8VM {
 					let y: u8 = self.v[y] % 64;
 					let w: u8 = if x <= 128 - 16 { 16 } else { 128 - x };
 					let h: u8 = if y <= 64 - 16 { 16 } else { 64 - y };
-					println!("x: {} y: {}", x, y);
 					self.v[0xF] = 0;
 					if w > 0 && h > 0 {
 						for j in 0..h {
