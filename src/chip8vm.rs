@@ -6,7 +6,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::num::Wrapping;
 
-static char_mem: [u8; 0x50] = [
+static char_mem: [u8; 180] = [
 	0xF0, 0x90, 0x90, 0x90, 0xF0,
 	0x20, 0x60, 0x20, 0x20, 0x70,
 	0xF0, 0x10, 0xF0, 0x80, 0xF0,
@@ -22,7 +22,18 @@ static char_mem: [u8; 0x50] = [
 	0xF0, 0x80, 0x80, 0x80, 0xF0,
 	0xE0, 0x90, 0x90, 0x90, 0xE0,
 	0xF0, 0x80, 0xF0, 0x80, 0xF0,
-	0xF0, 0x80, 0xF0, 0x80, 0x80
+	0xF0, 0x80, 0xF0, 0x80, 0x80,
+
+	0xFF, 0xFF, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF,
+    0x18, 0x78, 0x78, 0x18, 0x18, 0x18, 0x18, 0x18, 0xFF, 0xFF,
+    0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF,
+    0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF,
+    0xC3, 0xC3, 0xC3, 0xC3, 0xFF, 0xFF, 0x03, 0x03, 0x03, 0x03,
+    0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xC0, 0xC0, 0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF,
+    0xFF, 0xFF, 0x03, 0x03, 0x06, 0x0C, 0x18, 0x18, 0x18, 0x18,
+    0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF,
+    0xFF, 0xFF, 0xC3, 0xC3, 0xFF, 0xFF, 0x03, 0x03, 0xFF, 0xFF
 ];
 
 
@@ -55,7 +66,7 @@ impl Chip8VM {
 			sp: 0,
 			extended_mode: false,
 		};
-		for i in 0..0x50 {
+		for i in 0..180 {
 			vm.ram[i] = char_mem[i];
 		}
 		vm
@@ -94,7 +105,15 @@ impl Chip8VM {
 		match opcode & 0xF000 {
 			0x0000 => {
 				if opcode & 0x00F0 == 0x00C0 { // SCD nibble
-
+					for j in (0..64).rev() {
+						for i in 0..128 {
+							if j - n < 0 {
+								self.vram[(j * 128 + i) as usize] = false;
+							} else {
+								self.vram[(j * 128 + i) as usize] = self.vram[((j - n) * 128 + i) as usize];
+							}
+						}
+					}
 				} else if opcode != 0x0000 { // not NOP
 					match opcode {
 						0x00E0 => { // CLS
@@ -109,10 +128,26 @@ impl Chip8VM {
 							}
 						}
 						0x00FB => { // SCR
-
+							for i in (0..128).rev() {
+								for j in 0..64 {
+									if i - 4 < 0 {
+										self.vram[(j * 128 + i) as usize] = false;
+									} else {
+										self.vram[(j * 128 + i) as usize] = self.vram[(j * 128 + i - 4) as usize];
+									}
+								}
+							}
 						}
 						0x00FC => { // SCL
-
+							for i in 0..128 {
+								for j in 0..64 {
+									if i + 4 >= 128 {
+										self.vram[(j * 128 + i) as usize] = false;
+									} else {
+										self.vram[(j * 128 + i) as usize] = self.vram[(j * 128 + i + 4) as usize];
+									}
+								}
+							}
 						}
 						0x00FD => { // EXIT
 							self.pc -= 2;
@@ -224,25 +259,56 @@ impl Chip8VM {
 				self.v[x] = rand::random::<u8>() & byte;
 			}
 			0xD000 => { // DRW Vx, Vy, nibble
-				if !self.extended_mode {
-					let x: u8 = self.v[x] % 64;
-					let y: u8 = self.v[y] % 32;
-					let w: u8 = if x <= 56 { 8 } else { 64 - x };
-					let h: u8 = if y <= 32 - n { n } else { 32 - n };
+				if n > 0 {
+					let swidth: u8 = if self.extended_mode { 128 } else { 64 };
+					let sheight: u8 = swidth / 2;
+					let x: u8 = self.v[x] % swidth;
+					let y: u8 = self.v[y] % sheight;
+					let w: u8 = if x <= swidth - 8 { 8 } else { swidth - x };
+					let h: u8 = if y <= sheight - n { n } else { sheight - y };
 					self.v[0xF] = 0;
-					for j in 0..h {
-						for i in 0..w {
-							let pix: bool = if self.ram[self.i as usize + j as usize] & ((128 >> i) as u8) > 0 { true } else { false };
-							if pix {
-								let addr: usize = ((j + y) as u16 * 256 + (i + x) as u16 * 2) as usize;
-								if addr < 8192 {
+					if w > 0 && h > 0 {
+						for j in 0..h {
+							for i in 0..w {
+								let pix: bool = if self.ram[self.i as usize + j as usize] & ((128 >> i) as u8) > 0 { true } else { false };
+								if pix {
+									if self.extended_mode {
+										let addr: usize = ((j + y) as u16 * 128 + (i + x) as u16) as usize;
+										if self.vram[addr] {
+											self.v[0xF] = 1;
+										}
+										self.vram[addr] = !self.vram[addr];
+									} else {
+										let addr: usize = ((j + y) as u16 * 256 + (i + x) as u16 * 2) as usize;
+										if self.vram[addr] {
+											self.v[0xF] = 1;
+										}
+										self.vram[addr] = !self.vram[addr];
+										self.vram[addr + 1] = !self.vram[addr + 1];
+										self.vram[addr + 128] = !self.vram[addr + 128];
+										self.vram[addr + 129] = !self.vram[addr + 129];
+									}
+								}
+							}
+						}
+					}
+				} else if self.extended_mode {
+					let x: u8 = self.v[x] % 128;
+					let y: u8 = self.v[y] % 64;
+					let w: u8 = if x <= 128 - 16 { 16 } else { 128 - x };
+					let h: u8 = if y <= 64 - 16 { 16 } else { 64 - y };
+					println!("x: {} y: {}", x, y);
+					self.v[0xF] = 0;
+					if w > 0 && h > 0 {
+						for j in 0..h {
+							for i in 0..w {
+								let pix: bool = if self.ram[self.i as usize + j as usize * 2 + i as usize / 8] & ((128 >> (i % 8)) as u8) > 0 { true } else { false };
+								if pix {
+									let addr: usize = ((j + y) as u16 * 128 + (i + x) as u16) as usize;
 									if self.vram[addr] {
 										self.v[0xF] = 1;
 									}
 									self.vram[addr] = !self.vram[addr];
-									self.vram[addr + 1] = !self.vram[addr + 1];
-									self.vram[addr + 128] = !self.vram[addr + 128];
-									self.vram[addr + 129] = !self.vram[addr + 129];
 								}
 							}
 						}
@@ -294,8 +360,11 @@ impl Chip8VM {
 						self.i += self.v[x] as u16;
 						self.i %= 0x1000;
 					}
-					0xF029 => { // LD F, Vx
+					0xF029 => { // LD F5, Vx
 						self.i = self.v[x] as u16 * 5;
+					}
+					0xF030 => { // LD F10, Vx
+						self.i = self.v[x] as u16 * 10 + 80;
 					}
 					0xF033 => { // LD B, Vx
 						self.ram[self.i as usize] = self.v[x] / 100;

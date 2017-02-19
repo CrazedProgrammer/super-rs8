@@ -55,9 +55,11 @@ fn main() {
 					if clock_speed > 100 {
 						clock_speed -= 100;
 					}
+					println!("Clock speed: {}hz", clock_speed);
 				}
 				Event::KeyDown {keycode: Some(Keycode::Right), ..} => {
 					clock_speed += 100;
+					println!("Clock speed: {}hz", clock_speed);
 				}
 				Event::KeyDown {keycode: Some(Keycode::Delete), ..} => {
 					println!("Register dump:");
