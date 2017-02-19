@@ -6,10 +6,10 @@ Usage:
   
 Controls:  
 ```
-123A 1234
-456B QWER
-789C ASDF
-D0EF ZXCV
+123C 1234
+456D QWER
+789E ASDF
+A0BF ZXCV
 
 Escape: quit
 Space: pause/resume
