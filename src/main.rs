@@ -8,13 +8,32 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::rect::Rect;
 use sdl2::render::Renderer;
+use sdl2::audio::{AudioCallback, AudioSpecDesired};
 
-use std::time::Duration;
 use std::env;
 
-static key_map: [u32; 0x10] = [
+static KEY_MAP: [u32; 0x10] = [
 	120, 49, 50, 51, 113, 119, 101, 97, 115, 100, 122, 99, 52, 114, 102, 118
 ];
+
+struct SquareWave {
+    phase_inc: f32,
+    phase: f32,
+    volume: f32
+}
+
+impl AudioCallback for SquareWave {
+    type Channel = f32;
+    fn callback(&mut self, out: &mut [f32]) {
+        for x in out.iter_mut() {
+            *x = match self.phase {
+                0.0...0.5 => self.volume,
+                _ => -self.volume
+            };
+            self.phase = (self.phase + self.phase_inc) % 1.0;
+        }
+    }
+}
 
 fn main() {
 	let args: Vec<_> = env::args().collect();
@@ -30,6 +49,20 @@ fn main() {
 	let mut timer = sdl_context.timer().unwrap();
 	let mut event_pump = sdl_context.event_pump().unwrap();
 
+	let audio_subsystem = sdl_context.audio().unwrap();
+	let desired_spec = AudioSpecDesired {
+        freq: Some(44100),
+        channels: Some(1),
+        samples: None
+    };
+    let audio_device = audio_subsystem.open_playback(None, &desired_spec, |spec| {
+        SquareWave {
+            phase_inc: 880.0 / spec.freq as f32,
+            phase: 0.0,
+            volume: 0.1
+        }
+    }).unwrap();
+
 	let mut vm = Chip8VM::new();
 	vm.load_rom(&args[1]);
 
@@ -38,6 +71,8 @@ fn main() {
 
 	let mut last_frame: u32 = 0;
 	let mut rest_clocks: f32 = 0f32;
+	let mut sound_beep = false;
+
 	loop {
 		for event in event_pump.poll_iter() {
 			match event {
@@ -78,7 +113,7 @@ fn main() {
 				Event::KeyDown {keycode, ..} => {
 					let key = keycode.unwrap() as u32;
 					for i in 0..0x10 {
-						if key == key_map[i] {
+						if key == KEY_MAP[i] {
 							vm.keys[i] = true;
 						}
 					}
@@ -86,7 +121,7 @@ fn main() {
 				Event::KeyUp {keycode, ..} => {
 					let key = keycode.unwrap() as u32;
 					for i in 0..0x10 {
-						if key == key_map[i] {
+						if key == KEY_MAP[i] {
 							vm.keys[i] = false;
 						}
 					}
@@ -97,16 +132,27 @@ fn main() {
 		let frame: u32 = ((timer.ticks() as f32) / 1000.0 * 60.0) as u32;
 		if frame > last_frame {
 			last_frame = frame;
+			let beep_on: bool;
 			if running {
 				let clocks_per_frame: f32 = clock_speed as f32 / 60f32;
 				let clocks: f32 = rest_clocks + clocks_per_frame;
 				rest_clocks = clocks % 1f32;
 				vm.do_frame(clocks as u32);
+				beep_on = vm.st > 0;	
+			} else {
+				beep_on = false;
+			}
+			if beep_on && !sound_beep {
+				sound_beep = true;
+				audio_device.resume();
+			} else if !beep_on && sound_beep {
+				sound_beep = false;
+				audio_device.pause();
 			}
 		}
 
-		let mut width: u32 = 0;
-		let mut height: u32 = 0;
+		let width: u32;
+		let height: u32;
 		{
 			let window = renderer.window_mut().unwrap();
 			let size = window.size();
@@ -139,7 +185,7 @@ fn draw(vm: &Chip8VM, renderer: &mut Renderer, swidth: u32, sheight: u32) {
 	for i in 0..128 {
 		for j in 0..64 {
 			if vm.vram[j * 128 + i] {
-				renderer.fill_rect(screen_rect(i as u32, j as u32, swidth, sheight));
+				renderer.fill_rect(screen_rect(i as u32, j as u32, swidth, sheight)).unwrap();
 			}
 		}
 	}

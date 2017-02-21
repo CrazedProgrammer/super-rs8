@@ -3,10 +3,8 @@ extern crate rand;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
-use std::path::PathBuf;
-use std::num::Wrapping;
 
-static char_mem: [u8; 180] = [
+static CHAR_MEM: [u8; 180] = [
 	0xF0, 0x90, 0x90, 0x90, 0xF0,
 	0x20, 0x60, 0x20, 0x20, 0x70,
 	0xF0, 0x10, 0xF0, 0x80, 0xF0,
@@ -45,7 +43,7 @@ pub struct Chip8VM {
 	pub keys: [bool; 0x10],
 	i: u16,
 	dt: u8,
-	st: u8,
+	pub st: u8,
 	pc: u16,
 	sp: i8,
 	extended_mode: bool,
@@ -67,7 +65,7 @@ impl Chip8VM {
 			extended_mode: false,
 		};
 		for i in 0..180 {
-			vm.ram[i] = char_mem[i];
+			vm.ram[i] = CHAR_MEM[i];
 		}
 		vm
 	}
@@ -83,7 +81,7 @@ impl Chip8VM {
 	}
 
 	pub fn do_frame(&mut self, cycles: u32) {
-		for i in 0..cycles {
+		for _ in 0..cycles {
 			self.do_cycle();
 		}
 		if self.dt > 0 {
@@ -101,13 +99,13 @@ impl Chip8VM {
 		let byte = (opcode & 0x00FF) as u8;
 		let nnn = opcode & 0x0FFF;
 		let n = (opcode & 0x000F) as u8;
-		//println!("PC: {:03X} opcode: {:04X}", self.pc, opcode);
+
 		match opcode & 0xF000 {
 			0x0000 => {
 				if opcode & 0x00F0 == 0x00C0 { // SCD nibble
 					for j in (0..64).rev() {
 						for i in 0..128 {
-							if j - n < 0 {
+							if n > j {
 								self.vram[(j * 128 + i) as usize] = false;
 							} else {
 								self.vram[(j * 128 + i) as usize] = self.vram[((j - n) * 128 + i) as usize];
